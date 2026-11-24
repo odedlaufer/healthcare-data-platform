@@ -1,0 +1,46 @@
+name: hdp
+
+services:
+  postgres:
+    profiles: [core]
+    build:
+      context: governance/postgres
+    image: hdp/postgres:16.16-pgaudit
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pgaudit
+      - -c
+      - pgaudit.log=role,ddl
+      - -c
+      - pgaudit.log_relation=on
+      - -c
+      - pgaudit.log_catalog=off
+      - -c
+      - "log_line_prefix=%m [%p] user=%u db=%d app=%a "
+    environment:
+      POSTGRES_USER: hdp_admin
+      POSTGRES_DB: healthcare
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: --auth-local=scram-sha-256 --auth-host=scram-sha-256
+    secrets:
+      - postgres_password
+    ports:
+      - "127.0.0.1:45432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hdp_admin -d healthcare"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    shm_size: 256mb
+    mem_limit: 1g
+    restart: unless-stopped
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password
+
+volumes:
+  pgdata:
