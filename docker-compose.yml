@@ -38,6 +38,28 @@ services:
     mem_limit: 1g
     restart: unless-stopped
 
+  migrate:
+    profiles: [core]
+    image: ghcr.io/amacneil/dbmate:2.37.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    secrets:
+      - postgres_password
+    volumes:
+      - ./governance/migrations:/db/migrations:ro
+    environment:
+      DBMATE_MIGRATIONS_DIR: /db/migrations
+      DBMATE_NO_DUMP_SCHEMA: "true"
+      DBMATE_WAIT: "true"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - 'export DATABASE_URL="postgres://hdp_admin:$$(cat /run/secrets/postgres_password)@postgres:5432/healthcare?sslmode=disable" && exec dbmate "$$@"'
+      - dbmate
+    command: [up]
+    restart: "no"
+
 secrets:
   postgres_password:
     file: ./secrets/postgres_password
