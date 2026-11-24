@@ -155,3 +155,33 @@ def test_public_has_no_database_access(conn: Conn) -> None:
 
 def test_pgaudit_object_audit_role(conn: Conn) -> None:
     assert _scalar(conn, "SELECT current_setting('pgaudit.role')") == "pgaudit_auditor"
+
+
+def test_omop_cdm_tables_owned_by_engineer(conn: Conn) -> None:
+    rows = conn.execute(
+        """
+        SELECT schemaname, count(*), array_agg(DISTINCT tableowner)
+        FROM pg_tables
+        WHERE schemaname IN ('cdm', 'vocab')
+        GROUP BY schemaname
+        """
+    ).fetchall()
+    assert {schema: (count, owners) for schema, count, owners in rows} == {
+        "cdm": (29, ["engineer"]),
+        "vocab": (10, ["engineer"]),
+    }
+
+
+@pytest.mark.parametrize(
+    ("role", "table", "allowed"),
+    [
+        ("analyst", "cdm.person", True),
+        ("analyst", "vocab.concept", True),
+        ("researcher", "vocab.concept", True),
+        ("researcher", "cdm.person", False),
+        ("steward", "cdm.person", False),
+        ("census_viewer", "vocab.concept", False),
+    ],
+)
+def test_omop_cdm_read_access(conn: Conn, role: str, table: str, allowed: bool) -> None:
+    assert _scalar(conn, "SELECT has_table_privilege(%s, %s, 'SELECT')", (role, table)) is allowed

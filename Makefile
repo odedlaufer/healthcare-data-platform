@@ -33,13 +33,14 @@ psql: ## Open psql as admin
 lint: ## Lint and check formatting (ruff)
 	uv run ruff check .
 	uv run ruff format --check .
+	uv run python ohdsi/ddl/render_migration.py --check
 
 format: ## Auto-fix lint issues and format (ruff)
 	uv run ruff check --fix .
 	uv run ruff format .
 
 typecheck: ## Type-check (mypy strict)
-	uv run mypy $(PACKAGES) tests
+	uv run mypy $(PACKAGES) tests ohdsi/ddl
 
 test: ## Run unit tests with coverage (fails under 80%)
 	uv run pytest -m "not integration" $(addprefix --cov=,$(PACKAGES)) --cov-report=term-missing --cov-fail-under=80
