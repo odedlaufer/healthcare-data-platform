@@ -3,10 +3,10 @@ SHELL := /bin/bash
 
 PACKAGES := sources ingest mpi deid adt
 
-.PHONY: help install lint format typecheck test check
+.PHONY: help install lint format typecheck test test-integration check
 
 help: ## Show available targets
-	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
 install: ## Install locked dependencies and git hooks
 	uv sync --locked
@@ -23,7 +23,10 @@ format: ## Auto-fix lint issues and format (ruff)
 typecheck: ## Type-check (mypy strict)
 	uv run mypy $(PACKAGES) tests
 
-test: ## Run tests with coverage (fails under 80%)
-	uv run pytest $(addprefix --cov=,$(PACKAGES)) --cov-report=term-missing --cov-fail-under=80
+test: ## Run unit tests with coverage (fails under 80%)
+	uv run pytest -m "not integration" $(addprefix --cov=,$(PACKAGES)) --cov-report=term-missing --cov-fail-under=80
+
+test-integration: ## Run integration tests (needs: docker compose --profile core up)
+	uv run pytest -m integration
 
 check: lint typecheck test ## Run all checks (same as CI)

@@ -1,0 +1,53 @@
+name: governance
+
+on:
+  pull_request:
+    paths:
+      - "governance/**"
+      - "tests/governance/**"
+      - "docker-compose.yml"
+      - ".github/workflows/governance.yml"
+  push:
+    branches: [main]
+    paths:
+      - "governance/**"
+      - "tests/governance/**"
+      - "docker-compose.yml"
+      - ".github/workflows/governance.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: governance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  permission-matrix:
+    name: permission matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Create Postgres secret
+        run: |
+          mkdir -p secrets
+          openssl rand -hex 32 > secrets/postgres_password
+          chmod 600 secrets/postgres_password
+      - name: Start Postgres and apply migrations
+        run: |
+          docker compose --profile core up -d --build --wait postgres
+          docker compose run --rm migrate up
+      - name: Roll back every migration, then re-apply
+        run: |
+          for _ in governance/migrations/*.sql; do docker compose run --rm migrate rollback; done
+          docker compose run --rm migrate up
+      - name: Assert the permission matrix
+        run: make test-integration
+      - name: Postgres logs on failure
+        if: failure()
+        run: docker compose logs postgres
