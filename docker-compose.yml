@@ -252,6 +252,18 @@ services:
     mem_limit: 3g
     restart: unless-stopped
 
+  synthea:
+    profiles: [fhir]
+    build:
+      context: sources/synthea
+    image: hdp/synthea:4.0.0
+    user: "${HOST_UID:-1000}"
+    volumes:
+      - ./sources/synthea/hospital_a.properties:/config/hospital_a.properties:ro
+      - ./data/synthea/hospital_a:/output
+    mem_limit: 4g
+    restart: "no"
+
 secrets:
   postgres_password:
     file: ./secrets/postgres_password

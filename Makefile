@@ -4,10 +4,14 @@ SHELL := /bin/bash
 PACKAGES := sources ingest mpi deid adt
 COMPOSE := docker compose --profile core --profile airflow --profile fhir
 VOCAB_DIR ?= data/vocab/v5.0_2026-08-29
+SYNTHEA_POPULATION ?= 10000
+SYNTHEA_SEED ?= 20261101
+SYNTHEA_REFERENCE_DATE ?= 20261101
 AIRFLOW_SERVICES := airflow-apiserver airflow-scheduler airflow-dag-processor airflow-triggerer
-export AIRFLOW_UID ?= $(shell id -u)
+export HOST_UID ?= $(shell id -u)
+export AIRFLOW_UID ?= $(HOST_UID)
 
-.PHONY: help install secrets up airflow-up fhir-up down migrate psql vocab lint format typecheck test test-integration test-airflow test-fhir check
+.PHONY: help install secrets up airflow-up fhir-up synthea down migrate psql vocab lint format typecheck test test-integration test-airflow test-fhir check
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -31,6 +35,11 @@ airflow-up: up ## Start Airflow on top of the core stack
 
 fhir-up: secrets ## Start the HAPI FHIR source system (Hospital A EHR)
 	$(COMPOSE) up -d --build --wait hapi-db hapi
+
+synthea: ## Generate Hospital A patients (SYNTHEA_POPULATION, SYNTHEA_SEED, SYNTHEA_REFERENCE_DATE)
+	rm -rf data/synthea/hospital_a && mkdir -p data/synthea/hospital_a
+	$(COMPOSE) run --rm --build synthea -c /config/hospital_a.properties -p $(SYNTHEA_POPULATION) -s $(SYNTHEA_SEED) -cs $(SYNTHEA_SEED) -r $(SYNTHEA_REFERENCE_DATE) Massachusetts
+	cd data/synthea/hospital_a/fhir && mv hospitalInformation*.json hospitalInformation.json && mv practitionerInformation*.json practitionerInformation.json
 
 down: ## Stop every service (data volumes are kept)
 	$(COMPOSE) down
