@@ -2,10 +2,12 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 PACKAGES := sources ingest mpi deid adt
-COMPOSE := docker compose --profile core
+COMPOSE := docker compose --profile core --profile airflow
 VOCAB_DIR ?= data/vocab/v5.0_2026-08-29
+AIRFLOW_SERVICES := airflow-apiserver airflow-scheduler airflow-dag-processor airflow-triggerer
+export AIRFLOW_UID ?= $(shell id -u)
 
-.PHONY: help install secrets up down migrate psql vocab lint format typecheck test test-integration check
+.PHONY: help install secrets up airflow-up down migrate psql vocab lint format typecheck test test-integration test-airflow check
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -23,7 +25,11 @@ up: secrets ## Start the core stack, create buckets and apply migrations
 	$(COMPOSE) run --rm migrate up
 	$(COMPOSE) run --rm airflow-db-init
 
-down: ## Stop the stack (data volumes are kept)
+airflow-up: up ## Start Airflow on top of the core stack
+	$(COMPOSE) run --rm airflow-init
+	$(COMPOSE) up -d --wait $(AIRFLOW_SERVICES)
+
+down: ## Stop every service (data volumes are kept)
 	$(COMPOSE) down
 
 migrate: ## Apply pending migrations
@@ -48,9 +54,12 @@ typecheck: ## Type-check (mypy strict)
 	uv run mypy $(PACKAGES) tests ohdsi
 
 test: ## Run unit tests with coverage (fails under 80%)
-	uv run pytest -m "not integration" $(addprefix --cov=,$(PACKAGES)) --cov-report=term-missing --cov-fail-under=80
+	uv run pytest -m "not integration and not airflow" $(addprefix --cov=,$(PACKAGES)) --cov-report=term-missing --cov-fail-under=80
 
 test-integration: ## Run integration tests (needs: make up)
 	uv run pytest -m integration
+
+test-airflow: ## Run Airflow tests (needs: make airflow-up)
+	uv run pytest -m airflow
 
 check: lint typecheck test ## Run all checks (same as CI)
