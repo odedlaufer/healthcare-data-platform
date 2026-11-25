@@ -28,3 +28,4 @@ create airflow_fernet_key fernet_key
 create airflow_api_secret_key hex 32
 create airflow_jwt_secret hex 32
 create airflow_admin_passwords.json admin_passwords
+create hapi_db_password hex 32
