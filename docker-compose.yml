@@ -60,9 +60,38 @@ services:
     command: [up]
     restart: "no"
 
+  seaweedfs:
+    profiles: [core]
+    image: chrislusf/seaweedfs:4.54@sha256:4b42c212543a0acd4c0e675215ecdcaf62a186ef98def76c7e12701871222d15
+    entrypoint: ["/bin/sh", "/opt/hdp/entrypoint.sh"]
+    environment:
+      # Go GC soft target below the container limit (Lichess was OOM-killed at 1 GB during uploads).
+      GOMEMLIMIT: 1536MiB
+    secrets:
+      - s3_access_key
+      - s3_secret_key
+    ports:
+      - "127.0.0.1:48333:8333"
+    volumes:
+      - seaweedfs-data:/data
+      - ./governance/storage:/opt/hdp:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8333/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 10s
+    mem_limit: 2g
+    restart: unless-stopped
+
 secrets:
   postgres_password:
     file: ./secrets/postgres_password
+  s3_access_key:
+    file: ./secrets/s3_access_key
+  s3_secret_key:
+    file: ./secrets/s3_secret_key
 
 volumes:
   pgdata:
+  seaweedfs-data:

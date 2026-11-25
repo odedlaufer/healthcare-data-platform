@@ -5,14 +5,18 @@ on:
     paths:
       - "governance/**"
       - "tests/governance/**"
+      - "tests/infra/**"
       - "docker-compose.yml"
+      - "Makefile"
       - ".github/workflows/governance.yml"
   push:
     branches: [main]
     paths:
       - "governance/**"
       - "tests/governance/**"
+      - "tests/infra/**"
       - "docker-compose.yml"
+      - "Makefile"
       - ".github/workflows/governance.yml"
 
 permissions:
@@ -33,21 +37,14 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked
-      - name: Create Postgres secret
-        run: |
-          mkdir -p secrets
-          openssl rand -hex 32 > secrets/postgres_password
-          chmod 600 secrets/postgres_password
-      - name: Start Postgres and apply migrations
-        run: |
-          docker compose --profile core up -d --build --wait postgres
-          docker compose run --rm migrate up
+      - name: Start the core stack (secrets, Postgres, SeaweedFS, buckets, migrations)
+        run: make up
       - name: Roll back every migration, then re-apply
         run: |
           for _ in governance/migrations/*.sql; do docker compose run --rm migrate rollback; done
           docker compose run --rm migrate up
-      - name: Assert the permission matrix
+      - name: Assert the permission matrix and object storage access
         run: make test-integration
-      - name: Postgres logs on failure
+      - name: Service logs on failure
         if: failure()
-        run: docker compose logs postgres
+        run: docker compose --profile core logs postgres seaweedfs
