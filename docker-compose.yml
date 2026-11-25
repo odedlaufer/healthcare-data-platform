@@ -195,6 +195,63 @@ services:
       start_period: 60s
     mem_limit: 768m
 
+  hapi-db:
+    profiles: [fhir]
+    image: postgres:16.16
+    # The hospital EHR's own database: separate from the platform warehouse, not published.
+    environment:
+      POSTGRES_USER: hapi
+      POSTGRES_DB: hapi
+      POSTGRES_PASSWORD_FILE: /run/secrets/hapi_db_password
+      POSTGRES_INITDB_ARGS: --auth-local=scram-sha-256 --auth-host=scram-sha-256
+    secrets:
+      - hapi_db_password
+    volumes:
+      - hapi-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hapi -d hapi"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    shm_size: 256mb
+    mem_limit: 1g
+    restart: unless-stopped
+
+  hapi:
+    profiles: [fhir]
+    build:
+      context: sources/hapi
+    image: hdp/hapi:v8.12.0-2
+    depends_on:
+      hapi-db:
+        condition: service_healthy
+    environment:
+      # Spring reads the DB password from the secret file named after the property (configtree).
+      spring.config.import: configtree:/run/secrets/
+      spring.datasource.url: jdbc:postgresql://hapi-db:5432/hapi
+      spring.datasource.username: hapi
+      spring.datasource.driverClassName: org.postgresql.Driver
+      spring.jpa.properties.hibernate.dialect: ca.uhn.fhir.jpa.model.dialect.HapiFhirPostgresDialect
+      spring.jpa.properties.hibernate.search.enabled: "false"
+      hapi.fhir.fhir_version: R4
+      hapi.fhir.bulk_export_enabled: "true"
+      hapi.fhir.cr.enabled: "false"
+      hapi.fhir.mdm_enabled: "false"
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=75
+    secrets:
+      - source: hapi_db_password
+        target: spring.datasource.password
+    ports:
+      - "127.0.0.1:48090:8080"
+    healthcheck:
+      test: ["CMD", "java", "-Xmx32m", "-cp", "/opt/hdp/health", "Health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 180s
+    mem_limit: 3g
+    restart: unless-stopped
+
 secrets:
   postgres_password:
     file: ./secrets/postgres_password
@@ -212,8 +269,11 @@ secrets:
     file: ./secrets/airflow_jwt_secret
   airflow_admin_passwords:
     file: ./secrets/airflow_admin_passwords.json
+  hapi_db_password:
+    file: ./secrets/hapi_db_password
 
 volumes:
   pgdata:
   seaweedfs-data:
   airflow-logs:
+  hapi-pgdata:
