@@ -48,3 +48,4 @@ repos:
         language: system
         types: [python]
         require_serial: true
+        exclude: ^airflow/

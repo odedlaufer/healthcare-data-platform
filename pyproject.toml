@@ -29,7 +29,7 @@ warn_unused_configs = true
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-ra --strict-markers --strict-config"
-markers = ["integration: needs the running Postgres (docker compose --profile core up)"]
+markers = ["integration: needs the running Postgres (docker compose --profile core up)", "airflow: needs the running Airflow (make airflow-up)"]
 
 [dependency-groups]
 dev = [

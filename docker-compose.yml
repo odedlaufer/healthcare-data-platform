@@ -1,5 +1,38 @@
 name: hdp
 
+x-airflow: &airflow
+  profiles: [airflow]
+  image: apache/airflow:3.4.0-python3.12
+  user: "${AIRFLOW_UID:-50000}:0"
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "True"
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+    AIRFLOW__CORE__AUTH_MANAGER: airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: admin:admin
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE: /tmp/simple_auth_manager_passwords.json
+    AIRFLOW__API_AUTH__JWT_ISSUER: hdp
+    # Secrets are read from Docker secrets at runtime; none are passed as environment values.
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN_CMD: >-
+      sh -c 'printf "postgresql+psycopg://airflow:%s@postgres:5432/airflow" "$$(cat /run/secrets/airflow_db_password)"'
+    AIRFLOW__CORE__FERNET_KEY_CMD: cat /run/secrets/airflow_fernet_key
+    AIRFLOW__API__SECRET_KEY_CMD: cat /run/secrets/airflow_api_secret_key
+    AIRFLOW__API_AUTH__JWT_SECRET_CMD: cat /run/secrets/airflow_jwt_secret
+  secrets:
+    - airflow_db_password
+    - airflow_fernet_key
+    - airflow_api_secret_key
+    - airflow_jwt_secret
+    - airflow_admin_passwords
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags:ro
+    - airflow-logs:/opt/airflow/logs
+  depends_on:
+    postgres:
+      condition: service_healthy
+  restart: unless-stopped
+
 services:
   postgres:
     profiles: [core]
@@ -98,6 +131,70 @@ services:
     mem_limit: 2g
     restart: unless-stopped
 
+  airflow-init:
+    <<: *airflow
+    # Root only to hand the logs volume to AIRFLOW_UID; then runs the schema migration and exits.
+    user: "0:0"
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -euo pipefail
+        chown -R "${AIRFLOW_UID:-50000}:0" /opt/airflow/logs
+        exec /entrypoint airflow db migrate
+    restart: "no"
+
+  airflow-apiserver:
+    <<: *airflow
+    # SimpleAuthManager opens its password file for writing; give it a private copy of the secret.
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -euo pipefail
+        install -m 600 /run/secrets/airflow_admin_passwords /tmp/simple_auth_manager_passwords.json
+        exec /entrypoint airflow api-server
+    ports:
+      - "127.0.0.1:48080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "-s", "-o", "/dev/null", "http://localhost:8080/api/v2/monitor/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    mem_limit: 1g
+
+  airflow-scheduler:
+    <<: *airflow
+    command: scheduler
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    mem_limit: 2g
+
+  airflow-dag-processor:
+    <<: *airflow
+    command: dag-processor
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type DagProcessorJob --hostname "$${HOSTNAME}"']
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    mem_limit: 1g
+
+  airflow-triggerer:
+    <<: *airflow
+    command: triggerer
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type TriggererJob --hostname "$${HOSTNAME}"']
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    mem_limit: 768m
+
 secrets:
   postgres_password:
     file: ./secrets/postgres_password
@@ -107,7 +204,16 @@ secrets:
     file: ./secrets/s3_secret_key
   airflow_db_password:
     file: ./secrets/airflow_db_password
+  airflow_fernet_key:
+    file: ./secrets/airflow_fernet_key
+  airflow_api_secret_key:
+    file: ./secrets/airflow_api_secret_key
+  airflow_jwt_secret:
+    file: ./secrets/airflow_jwt_secret
+  airflow_admin_passwords:
+    file: ./secrets/airflow_admin_passwords.json
 
 volumes:
   pgdata:
   seaweedfs-data:
+  airflow-logs:
