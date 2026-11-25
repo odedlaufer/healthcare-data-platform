@@ -15,11 +15,7 @@ install: ## Install locked dependencies and git hooks
 	GIT_CONFIG_GLOBAL=/dev/null uv run pre-commit install
 
 secrets: ## Create local secrets if missing (never committed)
-	@mkdir -p secrets
-	@for spec in postgres_password:32 s3_access_key:16 s3_secret_key:32 airflow_db_password:32; do \
-	  file="secrets/$${spec%%:*}"; bytes="$${spec##*:}"; \
-	  test -f "$$file" || { openssl rand -hex "$$bytes" > "$$file" && chmod 600 "$$file" && echo "created $$file"; }; \
-	done
+	@sh governance/create_secrets.sh
 
 up: secrets ## Start the core stack, create buckets and apply migrations
 	$(COMPOSE) up -d --build --wait postgres seaweedfs
