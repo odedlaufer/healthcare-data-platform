@@ -110,24 +110,26 @@ wheels = [
 name = "healthcare-data-platform"
 version = "0.1.0"
 source = { virtual = "." }
+dependencies = [
+    { name = "psycopg", extra = ["binary"] },
+]
 
 [package.dev-dependencies]
 dev = [
     { name = "mypy" },
     { name = "pre-commit" },
-    { name = "psycopg", extra = ["binary"] },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
 ]
 
 [package.metadata]
+requires-dist = [{ name = "psycopg", extras = ["binary"], specifier = ">=3.3.9" }]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "mypy", specifier = ">=2.4.1" },
     { name = "pre-commit", specifier = ">=4.7.0" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.3.9" },
     { name = "pytest", specifier = ">=9.2.0" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
     { name = "ruff", specifier = ">=0.17.6" },

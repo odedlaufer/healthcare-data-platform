@@ -3,8 +3,9 @@ SHELL := /bin/bash
 
 PACKAGES := sources ingest mpi deid adt
 COMPOSE := docker compose --profile core
+VOCAB_DIR ?= data/vocab/v5.0_2026-08-29
 
-.PHONY: help install secrets up down migrate psql lint format typecheck test test-integration check
+.PHONY: help install secrets up down migrate psql vocab lint format typecheck test test-integration check
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -30,6 +31,9 @@ migrate: ## Apply pending migrations
 psql: ## Open psql as admin
 	$(COMPOSE) exec postgres sh -c 'PGPASSWORD="$$(cat /run/secrets/postgres_password)" exec psql -U hdp_admin -d healthcare'
 
+vocab: ## Load Athena vocabularies (VOCAB_DIR=data/vocab/<release>)
+	uv run python ohdsi/vocab/load_vocab.py $(VOCAB_DIR)
+
 lint: ## Lint and check formatting (ruff)
 	uv run ruff check .
 	uv run ruff format --check .
@@ -40,7 +44,7 @@ format: ## Auto-fix lint issues and format (ruff)
 	uv run ruff format .
 
 typecheck: ## Type-check (mypy strict)
-	uv run mypy $(PACKAGES) tests ohdsi/ddl
+	uv run mypy $(PACKAGES) tests ohdsi
 
 test: ## Run unit tests with coverage (fails under 80%)
 	uv run pytest -m "not integration" $(addprefix --cov=,$(PACKAGES)) --cov-report=term-missing --cov-fail-under=80
