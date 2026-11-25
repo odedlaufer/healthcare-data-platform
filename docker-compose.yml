@@ -60,6 +60,20 @@ services:
     command: [up]
     restart: "no"
 
+  airflow-db-init:
+    profiles: [core]
+    image: hdp/postgres:16.16-pgaudit
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/opt/hdp/init_airflow_db.sh"]
+    secrets:
+      - postgres_password
+      - airflow_db_password
+    volumes:
+      - ./governance/postgres:/opt/hdp:ro
+    restart: "no"
+
   seaweedfs:
     profiles: [core]
     image: chrislusf/seaweedfs:4.54@sha256:4b42c212543a0acd4c0e675215ecdcaf62a186ef98def76c7e12701871222d15
@@ -91,6 +105,8 @@ secrets:
     file: ./secrets/s3_access_key
   s3_secret_key:
     file: ./secrets/s3_secret_key
+  airflow_db_password:
+    file: ./secrets/airflow_db_password
 
 volumes:
   pgdata:
